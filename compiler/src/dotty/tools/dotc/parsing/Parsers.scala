@@ -2329,14 +2329,19 @@ object Parsers {
 
     /** ContextBound      ::=  Type [`as` id] */
     def contextBound(pname: TypeName): Tree =
+      val start = in.offset
       val t = toplevelTyp(inContextBound = true)
       val ownName =
         if isIdent(nme.as) && sourceVersion.enablesNewGivens then
           in.nextToken()
           ident()
         else EmptyTermName
-      val newSpan = t.span.withPoint(t.span.end).withEnd(in.lastOffset)
-      ContextBoundTypeTree(t, pname, ownName).withSpan(newSpan)
+      ContextBoundTypeTree(t, pname, ownName)
+        .withSpan:
+          if t.span.exists then
+            Span(t.span.start, end = in.lastOffset, point = t.span.end)
+          else
+            Span(start, end = in.lastOffset, point = start)
 
     /** ContextBounds     ::= ContextBound [`:` ContextBounds]
      *                      | `{` ContextBound {`,` ContextBound} `}`
@@ -3856,7 +3861,7 @@ object Parsers {
                 syntaxError(em"`using` expected")
               val (firstParamMod, paramsAreNamed) =
                 var mods = EmptyModifiers
-                if in.lookahead.isColon then
+                if in.token != INTERPOLATIONID && in.lookahead.isColon then
                   (mods, true)
                 else if isConsume then (mods, true)
                 else

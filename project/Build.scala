@@ -62,7 +62,7 @@ object Build {
    *
    *  Warning: Change of this variable needs to be consulted with `expectedTastyVersion`
    */
-  val referenceVersion = "3.8.3-RC3"
+  val referenceVersion = "3.8.3"
 
   /** Version of the Scala compiler targeted in the current release cycle
    *  Contains a version without RC/SNAPSHOT/NIGHTLY specific suffixes
@@ -82,7 +82,7 @@ object Build {
    *  During release candidate cycle incremented by the release officer before publishing a subsequent RC version;
    *  During final, stable release is set exactly to `developedVersion`.
   */
-  val baseVersion = s"$developedVersion-RC1"
+  val baseVersion = developedVersion
 
   /** The version of TASTY that should be emitted, checked in runtime test
    *  For defails on how TASTY version should be set see related discussions:
@@ -100,7 +100,7 @@ object Build {
    *      - in release candidate branch is experimental if {patch == 0}
    *      - in stable release is always non-experimetnal
    */
-  val expectedTastyVersion = "28.9-experimental-1"
+  val expectedTastyVersion = "28.8"
   checkReleasedTastyVersion()
 
   /** Final version of Scala compiler, controlled by environment variables. */
@@ -140,9 +140,9 @@ object Build {
   val mimaPreviousDottyVersion = "3.8.0"
 
   /** Version of Scala CLI to download */
-  val scalaCliLauncherVersion = "1.12.5"
+  val scalaCliLauncherVersion = "1.14.0"
   /** Version of Coursier to download for initializing the local maven repo of Scala command */
-  val coursierJarVersion = "2.1.25-M24"
+  val coursierJarVersion = "2.1.25-M25"
 
   object CompatMode {
     final val BinaryCompatible = 0
@@ -484,8 +484,7 @@ object Build {
 
   // Settings used when compiling dotty with a non-bootstrapped dotty
   lazy val commonBootstrappedSettings = commonDottySettings ++ Seq(
-    // To enable support of scaladoc and language-server projects you need to change this to true
-    bspEnabled := false,
+    bspEnabled := enableBspAllProjects,
     (Compile / unmanagedSourceDirectories) += baseDirectory.value / "src-bootstrapped",
 
     version := dottyVersion,
@@ -1083,6 +1082,7 @@ object Build {
           (Compile / sourceManaged).value
         }
         val externalDeps = (ThisProject / Runtime / externalDependencyClasspath).value
+        val testExternalDeps = (ThisProject / Test / externalDependencyClasspath).value
         Seq(
           s"-Ddotty.tests.dottyCompilerManagedSources=${managedSrcDir}",
           s"-Ddotty.tests.classes.dottyInterfaces=${(`scala3-interfaces` / Compile / packageBin).value}",
@@ -1100,6 +1100,7 @@ object Build {
           s"-Ddotty.tests.classes.pprint=${findArtifactPath(externalDeps, "pprint_3")}",
           s"-Ddotty.tests.classes.fansi=${findArtifactPath(externalDeps, "fansi_3")}",
           s"-Ddotty.tests.classes.sourcecode=${findArtifactPath(externalDeps, "sourcecode_3")}",
+          s"-Ddotty.tests.classes.scalaXml=${findArtifactPath(testExternalDeps, "scala-xml_2.13")}",
           s"-Ddotty.tools.dotc.semanticdb.test=${(ThisBuild / baseDirectory).value/"tests"/"semanticdb"}",
         )
       },
@@ -1190,6 +1191,7 @@ object Build {
       Test / unmanagedResourceDirectories := Seq(baseDirectory.value / "test-resources"),
       libraryDependencies ++= Seq(
         "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+        "org.scalacheck" %% "scalacheck" % "1.19.0" % Test
       ),
       // We do not want to list any dependency for the stdlib
       pomPostProcess := { (node: XmlNode) =>
@@ -1272,11 +1274,11 @@ object Build {
       Compile / resourceGenerators += generateLibraryProperties.taskValue,
       bspEnabled := enableBspAllProjects,
       Compile / mainClass := None,
-
       Test / unmanagedSourceDirectories   := Seq(baseDirectory.value / "test"),
       Test / unmanagedResourceDirectories := Seq(baseDirectory.value / "test-resources"),
       libraryDependencies ++= Seq(
         "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+        "org.scalacheck" %% "scalacheck" % "1.19.0" % Test
       ),
       // We do not want to list any dependency for the stdlib
       pomPostProcess := { (node: XmlNode) =>
@@ -2439,7 +2441,6 @@ object Build {
       },
       ideTestsScalaJSClasspath := {
         val externalJSCommonDeps = (`scaladoc-js-common`  / Compile / externalDependencyClasspath).value
-        println(externalJSCommonDeps)
         val scalaJSCommonDom = findArtifact(externalJSCommonDeps, "scalajs-dom_sjs1_3")
         val externalJSDeps = (`scala-library-sjs` / Compile / externalDependencyClasspath).value
         val scalaJSLibrary = findArtifact(externalJSDeps, "scalajs-library_2.13")
@@ -2456,7 +2457,7 @@ object Build {
       BuildInfoPlugin.buildInfoDefaultSettings
 
   lazy val presentationCompilerSettings = {
-    val mtagsVersion = "1.6.3"
+    val mtagsVersion = "1.6.7"
     Seq(
       libraryDependencies ++= Seq(
         "org.lz4" % "lz4-java" % "1.8.0",

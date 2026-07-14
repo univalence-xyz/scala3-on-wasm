@@ -558,7 +558,8 @@ extends ImplicitRunInfo, ConstraintRunInfo, cc.CaptureRunInfo {
     super[ImplicitRunInfo].reset()
     super[ConstraintRunInfo].reset()
     super[CaptureRunInfo].reset()
-    myCtx = null
+    // TODO: This makes `runContext` unusable after being reset.
+    myCtx = null.asInstanceOf[Context]
     myUnits = Nil
     myUnitsCached = Nil
   }
@@ -593,11 +594,10 @@ extends ImplicitRunInfo, ConstraintRunInfo, cc.CaptureRunInfo {
     start.setRun(this: @unchecked)
   }
 
-  private var myCtx: Context | Null = rootContext(using ictx)
+  private var myCtx: Context = rootContext(using ictx)
 
   /** The context created for this run */
-  given runContext[Dummy_so_its_a_def]: Context = myCtx.nn
-  assert(runContext.runId <= Periods.MaxPossibleRunId)
+  given runContext[Dummy_so_its_a_def]: Context = myCtx
 }
 
 object Run {

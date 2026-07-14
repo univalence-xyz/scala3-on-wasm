@@ -170,6 +170,10 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             transformExplicitType(symd.info, sym)(using symCtx)
       if Synthetics.needsTransform(symd) then
         Synthetics.transform(symd, mappedInfo)
+      else if sym.isClass && !sym.is(CaptureChecked) then
+        val newInfo = fluidify(sym.info)
+        if newInfo ne sym.info then symd.copySymDenotation(info = newInfo)
+        else symd
       else if isPreCC(sym) then
         symd.copySymDenotation(info = fluidify(sym.info))
       else if symd.owner.isTerm
@@ -322,7 +326,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
                     mapInferred(inCaptureRefinement = true)(tp.memberInfo(getter)).strippedDealias
                   RefinedType.precise(core, getter.name,
                       CapturingType(getterType,
-                        CaptureSet.ProperVar(ctx.owner, isRefining = true)))
+                        CaptureSet.VarInTypeTree(ctx.owner, isRefining = true)))
                     .showing(i"add capture refinement $tp --> $result", capt)
                 else
                   core
@@ -496,11 +500,8 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
               t.derivedAnnotatedType(this(parent), ann)
           case throwsAlias(res, exc) =>
             this(expandThrowsAlias(res, exc, Nil))
-          case t: MethodType if variance > 0 && t.marksExistentialScope =>
-            val t1 = mapOver(t).asInstanceOf[MethodType]
-            if t1.resType.containsGlobalFreshDirectly then
-              t1.derivedLambdaType(resType = mappedDealias(toResult(t1.resType, t1, sym, fail)))
-            else t1
+          case t: MethodType if t.marksExistentialScope =>
+            FreshCapToResult()(mapOver(t)).asInstanceOf[MethodType]
           case t: (LazyRef | TypeVar) =>
             mapConserveSuper(t)
           case t =>
@@ -779,7 +780,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             // Infer the self type for the rest, which is all classes without explicit
             // self types (to which we also add nested module classes), provided they are
             // neither pure, nor are publicily extensible with an unconstrained self type.
-            val cs = CaptureSet.ProperVar(cls, CaptureSet.emptyRefs, nestedOK = false, isRefining = false)
+            val cs = CaptureSet.VarInTypeTree(cls, CaptureSet.emptyRefs, nestedOK = false, isRefining = false)
 
             if cls.derivesFrom(defn.Caps_Capability) then
               // If cls is a capability class, we need to add a LocalCap capability to ensure
@@ -939,7 +940,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
 
   /** Add a capture set variable to `tp` if necessary. */
   private def addVar(tp: Type, owner: Symbol, isRefining: Boolean, typeArgFormal: Type = NoType)(using Context): Type =
-    decorate(tp, CaptureSet.ProperVar(owner, _, nestedOK = !ctx.mode.is(Mode.CCPreciseOwner), isRefining), typeArgFormal)
+    decorate(tp, CaptureSet.VarInTypeTree(owner, _, nestedOK = !ctx.mode.is(Mode.CCPreciseOwner), isRefining), typeArgFormal)
 
   /** A map that adds <fluid> capture sets at all contra- and invariant positions
    *  in a type where a capture set would be needed. This is used to make types
@@ -949,6 +950,12 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
    */
   private def fluidify(using Context) = new TypeMap:
     def apply(t: Type): Type = t match
+      case cinfo: ClassInfo =>
+        val selfInfo1 =
+          inContext(ctx.withOwner(cinfo.cls)):
+            atVariance(0):
+              this(cinfo.cls.givenSelfType)
+        cinfo.derivedClassInfo(selfInfo = selfInfo1)
       case t: MethodType =>
         mapOver(t)
       case t: TypeLambda =>
