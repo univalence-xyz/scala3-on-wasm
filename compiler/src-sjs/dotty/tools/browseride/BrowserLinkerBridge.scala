@@ -28,7 +28,10 @@ object BrowserLinkerBridge:
     .withSourceMap(false)
     .withModuleKind(ModuleKind.ESModule)
   private val compilerModuleConfig = baseConfig
-    .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2018))
+    // The 1.22 Wasm backend requires ES2022 or later, and JSPI (needed by
+    // the js.await-based archive handling) became opt-in.
+    .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2022))
+    .withWasmFeatures(_.withUseJSPI(true))
   private val moduleLinker = new LinkerSession(baseConfig)
   private val compilerModuleLinker = new LinkerSession(compilerModuleConfig)
 

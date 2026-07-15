@@ -1792,9 +1792,11 @@ object Build {
       // The current JS-side archive handling uses JSPI/await, so the compiler
       // itself still runs through the Scala.js Wasm backend under Node.
       scalaJSLinkerConfig ~= {
-        _.withExperimentalUseWebAssembly(true)
-          .withModuleKind(ModuleKind.ESModule)
-          .withESFeatures(_.withESVersion(ESVersion.ES2018))
+        // The 1.22 Wasm backend requires ES2022 or later, and JSPI (needed by
+        // the js.await-based archive handling) became opt-in.
+        _.withModuleKind(ModuleKind.ESModule)
+          .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2022))
+          .withWasmFeatures(_.withUseJSPI(true))
       },
       jsEnv := new NodeJSEnv(NodeJSEnv.Config().withArgs(sjsCompilerNodeFlags)),
       libraryDependencies ++= Seq(
