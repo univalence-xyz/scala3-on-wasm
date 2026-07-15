@@ -34,6 +34,7 @@ import reporting.*
 import Message.Note
 import transform.Splicer
 import annotation.tailrec
+import NullOpsDecorator.stripNull
 
 import scala.annotation.internal.sharable
 import scala.annotation.threadUnsafe
@@ -889,7 +890,7 @@ trait Implicits:
     && ctx.mode.is(Mode.ImplicitsEnabled)
     && from.isValueType
     && (  from.isValueSubType(to)
-       || inferView(dummyTreeOfType(from), to)
+       || inferView(dummyTreeOfType(from).withSpan(ctx.tree.span), to)
             (using ctx.fresh.addMode(Mode.ImplicitExploration).setExploreTyperState()).isSuccess
           // TODO: investigate why we can't TyperState#test here
        || from.widen.isNamedTupleType && to.derivesFrom(defn.TupleClass)
@@ -1074,8 +1075,8 @@ trait Implicits:
     || locally:
       if strictEquality then
         strictEqualityPatternMatching &&
-          (leftTree.symbol.isAllOf(Flags.EnumValue) || leftTree.symbol.isAllOf(Flags.Module | Flags.Case)) &&
-          ltp <:< lift(rtp)
+          (leftTree.symbol.isAllOf(Flags.EnumValue) || leftTree.symbol.is(Flags.Module)) &&
+          ltp <:< rtp
       else
         ltp <:< lift(rtp) || rtp <:< lift(ltp)
   }
@@ -1684,14 +1685,14 @@ trait Implicits:
     def isUnderSpecifiedArgument(tp: Type): Boolean =
       tp.isRef(defn.NothingClass) || tp.isRef(defn.NullClass) || (tp eq NoPrefix)
 
-    private def isUnderspecified(tp: Type): Boolean = tp.stripTypeVar match
+    private def isUnderspecified(tp: Type): Boolean = tp.stripTypeVar.stripNull() match
       case tp: WildcardType =>
         !tp.optBounds.exists || isUnderspecified(tp.optBounds.hiBound)
       case tp: ViewProto =>
         isUnderspecified(tp.resType)
         || tp.resType.isRef(defn.UnitClass)
         || isUnderSpecifiedArgument(tp.argType.widen)
-      case _ =>
+      case tp =>
         tp.isAny || tp.isAnyRef
 
     /** Search implicit in context `ctxImplicits` or else in implicit scope
@@ -1768,8 +1769,8 @@ trait Implicits:
                           |Current result ${showResult(prevResult)} will be no longer eligible
                           |  because it is not defined before the search position.
                           |Result with new rules: ${showResult(result)}.
-                          |To opt into the new rules, compile with `-source future` or use
-                          |the `scala.language.future` language import.
+                          |To opt into the new rules, compile with `-source 3.6` (or higher) or use
+                          |the `scala.language.`3.6` language import.
                           |
                           |To fix the problem without the language import, you could try one of the following:
                           |  - use a `given ... with` clause as the enclosing given,
@@ -1863,15 +1864,33 @@ trait Implicits:
       // is larger (see `typeSize`) and is constructed using the same set of types and type
       // constructors (see `coveringSet`).
       //
+      // We also treat two candidates as equivalent for this check when they are sibling
+      // givens declared in the same owner that share a declared signature. Such siblings
+      // (a common pattern when modeling type class hierarchies, see i24914) demand the
+      // same context parameters, so exploring one and then another under the same
+      // prototype shape makes no progress and would otherwise lead to a factorial
+      // blow-up of the search before the expression-count limit eventually kicks in.
+      // We use `frozen_=:=` so the check does not commit constraint updates.
+      //
       // We are able to tie a recursive knot if there is compatible term already under
       // construction which is separated from this context by at least one by name argument
       // as we ascend the chain of open implicits to the outermost search context.
+
+      def equivalentCandidates(c1: Candidate, c2: Candidate): Boolean =
+        if c1.ref eq c2.ref then true
+        else
+          val sym1 = c1.ref.symbol
+          val sym2 = c2.ref.symbol
+          sym1.exists
+            && sym2.exists
+            && sym1.maybeOwner == sym2.maybeOwner
+            && c1.ref.info.frozen_=:=(c2.ref.info)
 
       @tailrec
       def loop(history: SearchHistory, belowByname: Boolean): Boolean =
         history match
           case prev @ OpenSearch(cand1, tp, outer) =>
-            if cand1.ref eq cand.ref then
+            if equivalentCandidates(cand1, cand) then
               lazy val wildTp = wildApprox(tp.widenExpr)
               if belowByname && (wildTp <:< wildPt) then
                 fullyDefinedType(tp, "by-name implicit parameter", srcPos)

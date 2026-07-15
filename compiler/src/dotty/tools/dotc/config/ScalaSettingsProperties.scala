@@ -8,9 +8,8 @@ import dotty.tools.dotc.util.PlatformDependent.platformDependent
 
 object ScalaSettingsProperties:
 
-  private lazy val minTargetVersion = classfileVersionMap.keysIterator.min
-  private lazy val maxTargetVersion = classfileVersionMap.keysIterator.max
-
+  private val minTargetVersion = 17
+  private val maxTargetVersion = 26
   private val minReleaseVersion = 17
 
   def supportedTargetVersions: List[String] =

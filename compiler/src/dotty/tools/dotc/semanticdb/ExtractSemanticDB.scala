@@ -2,8 +2,6 @@ package dotty.tools
 package dotc
 package semanticdb
 
-import scala.language.unsafeNulls
-
 import core.*
 import Phases.*
 import ast.tpd.*

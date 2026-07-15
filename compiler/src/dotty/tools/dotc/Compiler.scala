@@ -17,9 +17,6 @@ class Compiler {
   private transparent inline def jvmOnlyPhases(inline jvm: List[List[Phase]]): List[List[Phase]] =
     platformDependent(jvm)(Nil)
 
-  private transparent inline def platformPhaseGroup(inline jvm: List[Phase], inline js: List[Phase]): List[List[Phase]] =
-    List(platformDependent(jvm)(js))
-
   /** Meta-ordering constraint:
    *
    *  DenotTransformers that change the signature of their denotation's info must go
@@ -141,43 +138,28 @@ class Compiler {
                                      // Note: in this mini-phase block scopes are incorrect. No phases that rely on scopes should be here
          new ElimStaticThis,         // Replace `this` references to static objects by global identifiers
          new CountOuterAccesses) ::  // Identify outer accessors that can be dropped
-    platformPhaseGroup(
-      List(new DropOuterAccessors,     // Drop unused outer accessors
-           new DropParentRefinements,  // Drop parent refinements from a template
-           new CheckNoSuperThis,       // Check that supercalls don't contain references to `this`
-           new Flatten,                // Lift all inner classes to package scope
-           new TransformWildcards,     // Replace wildcards with default values
-           new MoveStatics,            // Move static methods from companion to the class itself
-           new ExpandPrivate,          // Widen private definitions accessed from nested classes
-           new RestoreScopes,          // Repair scopes rendered invalid by moving definitions in prior phases of the group
-           new SelectStatic,           // get rid of selects that would be compiled into GetStatic
-           new sjs.JUnitBootstrappers, // Generate JUnit-specific bootstrapper classes for Scala.js (not enabled by default)
-           new CollectEntryPoints,     // Collect all entry points and save them in the context
-           new RepeatableAnnotations)
-    ,
-      List(new DropOuterAccessors,
-           new DropParentRefinements,
-           new CheckNoSuperThis,
-           new Flatten,
-           new TransformWildcards,
-           new MoveStatics,
-           new ExpandPrivate,
-           new RestoreScopes,
-           new SelectStatic,
-           new sjs.JUnitBootstrappers,
-           new RepeatableAnnotations)
-    ) ::: // Aggregate repeatable annotations
+    List(new DropOuterAccessors,     // Drop unused outer accessors
+         new DropParentRefinements,  // Drop parent refinements from a template
+         new CheckNoSuperThis,       // Check that supercalls don't contain references to `this`
+         new Flatten,                // Lift all inner classes to package scope
+         new TransformWildcards,     // Replace wildcards with default values
+         new MoveStatics,            // Move static methods from companion to the class itself
+         new ExpandPrivate,          // Widen private definitions accessed from nested classes
+         new RestoreScopes,          // Repair scopes rendered invalid by moving definitions in prior phases of the group
+         new SelectStatic,           // get rid of selects that would be compiled into GetStatic
+         new sjs.JUnitBootstrappers, // Generate JUnit-specific bootstrapper classes for Scala.js (not enabled by default)
+         new RepeatableAnnotations) :: // Aggregate repeatable annotations
     Nil
 
   /** Generate the output of the compilation */
   protected def backendPhases: List[List[Phase]] =
     PlatformBackendPhases.backendPhases
 
-  // TODO: Initially 0, so that the first nextRunId call would return InitialRunId == 1
-  // Changing the initial runId from 1 to 0 makes the scala2-library-bootstrap fail to compile,
+  // TODO: Initially InitialRunId - 1, so that the first nextRunId call would return InitialRunId
+  // Setting the initial runId to InitialRunId - 1 makes the scala2-library-bootstrap fail to compile,
   // when the underlying issue is fixed, please update dotc.profiler.RealProfiler.chromeTrace logic
-  private var runId: Int = 1
-  def nextRunId: Int = {
+  private var runId: Periods.RunId = Periods.InitialRunId
+  def nextRunId: Periods.RunId = {
     runId += 1; runId
   }
 

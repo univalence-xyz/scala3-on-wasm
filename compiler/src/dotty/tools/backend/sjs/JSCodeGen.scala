@@ -1,7 +1,5 @@
 package dotty.tools.backend.sjs
 
-import scala.language.unsafeNulls
-
 import scala.annotation.switch
 import scala.collection.mutable
 
@@ -93,14 +91,14 @@ class JSCodeGen()(using genCtx: Context) {
   /** Resets all of the scoped state in the context of `body`. */
   private def resetAllScopedVars[T](body: => T): T = {
     withScopedVars(
-        currentClassSym := null,
-        delambdafyTargetDefDefs := null,
-        methodsAllowingJSAwait := null,
-        currentMethodSym := null,
-        localNames := null,
-        thisLocalVarName := null,
-        isModuleInitialized := null,
-        undefinedDefaultParams := null
+        currentClassSym.unset,
+        delambdafyTargetDefDefs.unset,
+        methodsAllowingJSAwait.unset,
+        currentMethodSym.unset,
+        localNames.unset,
+        thisLocalVarName.unset,
+        isModuleInitialized.unset,
+        undefinedDefaultParams.unset
     ) {
       body
     }
@@ -142,7 +140,7 @@ class JSCodeGen()(using genCtx: Context) {
 
   def currentThisType: jstpe.Type = {
     currentThisTypeNullable match {
-      case tpe @ jstpe.ClassType(cls, _) =>
+      case tpe @ jstpe.ClassType(cls, _, _) =>
         jswkn.BoxedClassToPrimType.getOrElse(cls, tpe.toNonNullable)
       case tpe @ jstpe.AnyType =>
         // We are in a JS class, in which even `this` is nullable
@@ -1026,7 +1024,7 @@ class JSCodeGen()(using genCtx: Context) {
          * In dotc this is usually not an issue, because it unboxes `null` to
          * the zero of the underlying type, unlike scalac which throws an NPE.
          */
-        jstpe.ClassType(encodeClassName(tpe.tycon.typeSymbol), nullable = true)
+        jstpe.ClassType(encodeClassName(tpe.tycon.typeSymbol), nullable = true, exact = false)
 
       case _ =>
         // Other types are not boxed, so we can initialized them to their true zero.
@@ -2373,7 +2371,7 @@ class JSCodeGen()(using genCtx: Context) {
     val newMethodIdent = js.MethodIdent(newName)
 
     js.ApplyStatic(js.ApplyFlags.empty, className, newMethodIdent, args)(
-        jstpe.ClassType(className, nullable = true))
+        jstpe.ClassType(className, nullable = true, exact = false))
   }
 
   /** Gen JS code for a new of a JS class (subclass of `js.Any`). */
@@ -2549,7 +2547,7 @@ class JSCodeGen()(using genCtx: Context) {
       val fieldsObjValue = {
         js.JSObjectConstr(privateFieldDefs.toList.map { fdef =>
           implicit val pos = fdef.pos
-          js.StringLiteral(fdef.name.name.nameString) -> jstpe.zeroOf(fdef.ftpe)
+          anonJSClassFieldIdentToStringLiteral(fdef.name) -> jstpe.zeroOf(fdef.ftpe)
         })
       }
       val definePrivateFieldsObj = {
@@ -3491,7 +3489,7 @@ class JSCodeGen()(using genCtx: Context) {
 
     // Sanity check: we can handle Ints and Strings (including `null`s), but nothing else
     genSelector.tpe match {
-      case jstpe.IntType | jstpe.ClassType(jswkn.BoxedStringClass, _) | jstpe.NullType | jstpe.NothingType =>
+      case jstpe.IntType | jstpe.ClassType(jswkn.BoxedStringClass, _, _) | jstpe.NullType | jstpe.NothingType =>
         // ok
       case _ =>
         abortMatch(s"Invalid selector type ${genSelector.tpe}")
@@ -3675,7 +3673,7 @@ class JSCodeGen()(using genCtx: Context) {
       val formalAndActualParams = formalParamNames.lazyZip(formalParamTypes).lazyZip(formalParamRepeateds).map {
         (name, tpe, repeated) =>
           val formalTpe =
-            if (isFunctionXXL) jstpe.ArrayType(ObjectArrayTypeRef, nullable = true)
+            if (isFunctionXXL) jstpe.ArrayType(ObjectArrayTypeRef, nullable = true, exact = false)
             else jstpe.AnyType
           val formalParam = js.ParamDef(freshLocalIdent(name),
               OriginalName(name.toString), formalTpe, mutable = false)
@@ -3753,7 +3751,7 @@ class JSCodeGen()(using genCtx: Context) {
           superClass = jswkn.ObjectClass,
           interfaces = List(encodeClassName(defn.FunctionXXLClass)),
           methodName = MethodName(applySimpleMethodName, List(ObjectArrayTypeRef), jswkn.ObjectRef),
-          paramTypes = List(jstpe.ArrayType(ObjectArrayTypeRef, nullable = true)),
+          paramTypes = List(jstpe.ArrayType(ObjectArrayTypeRef, nullable = true, exact = false)),
           resultType = jstpe.AnyType
         )
         js.NewLambda(descriptor, closure)(encodeClassType(funInterfaceSym).toNonNullable)
@@ -4209,7 +4207,7 @@ class JSCodeGen()(using genCtx: Context) {
           case arg: js.JSGlobalRef => js.JSTypeOfGlobalRef(arg)
           case _                   => js.JSUnaryOp(js.JSUnaryOp.typeof, arg)
         }
-        js.AsInstanceOf(typeofExpr, jstpe.ClassType(jswkn.BoxedStringClass, nullable = true))
+        js.AsInstanceOf(typeofExpr, jstpe.ClassType(jswkn.BoxedStringClass, nullable = true, exact = false))
 
       case STRICT_EQ =>
         // js.special.strictEquals(arg1, arg2)
@@ -4621,7 +4619,7 @@ class JSCodeGen()(using genCtx: Context) {
                 js.LoadModule(ScalaJSRuntimeModClassName),
                 js.MethodIdent(WrapArray.wrapArraySymToToVarArgsName(wrapArray.symbol)),
                 List(genExpr(arrayValue))
-              )(jstpe.ClassType(encodeClassName(defn.SeqClass), nullable = true))
+              )(jstpe.ClassType(encodeClassName(defn.SeqClass), nullable = true, exact = false))
 
             case _ =>
               genExpr(arg)
@@ -4806,7 +4804,7 @@ class JSCodeGen()(using genCtx: Context) {
       } else if (sym.owner.isAnonymousClass) {
         js.JSSelect(
             js.JSSelect(qual, genPrivateFieldsSymbol()),
-            encodeFieldSymAsStringLiteral(sym))
+            encodeAnonJSClassFieldSymAsStringLiteral(sym))
       } else {
         js.JSPrivateSelect(qual, encodeFieldSym(sym))
       }
@@ -5178,8 +5176,6 @@ class JSCodeGen()(using genCtx: Context) {
 
     hasNativeCompanion && hasDefaultParameters
   }
-
-  // Copied from DottyBackendInterface
 
   private val desugared = new java.util.IdentityHashMap[Type, tpd.Select]
 

@@ -16,7 +16,7 @@ import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 import reporting.TestReporter
-import vulpix._
+import vulpix.*, Status.Failure
 import org.junit.Ignore
 
 @Category(Array(classOf[ScalaJSCompilationTests]))
@@ -90,7 +90,8 @@ object ScalaJSCompilationTests extends ParallelTesting {
       skippedSeparateCompilationGroups.add(testSource.title)
       true
     else
-      testSource.allToolArgs.get(ToolName.ScalaJS).exists(_.contains("--skip"))
+      testSource.sourceFiles.exists(_.getName.endsWith(".java"))
+      || testSource.allToolArgs.get(ToolName.ScalaJS).exists(_.contains("--skip"))
       || super.shouldSkipTestSource(testSource)
 
   override protected def testPlatform: TestPlatform = TestPlatform.ScalaJS

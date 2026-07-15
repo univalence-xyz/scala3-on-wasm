@@ -2,8 +2,6 @@ package dotty.tools
 package dotc
 package util
 
-import scala.language.unsafeNulls
-
 import dotty.tools.io.*
 import Spans.*
 import core.Contexts.*
@@ -12,7 +10,6 @@ import core.Decorators.*
 import scala.io.Codec
 import Chars.*
 import scala.annotation.internal.sharable
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.compiletime.uninitialized
 import dotty.tools.dotc.util.chaining.*
@@ -83,37 +80,38 @@ object WrappedSourceFile:
     case NoHeader
   import MagicHeaderInfo.*
 
-  private val cache: mutable.HashMap[SourceFile, MagicHeaderInfo] = mutable.HashMap.empty
+  /** Convert a (source, span) pair into a SourcePosition, remapping through the
+   *  magic offset header if applicable. */
+  def sourcePos(sourceFile: SourceFile, span: Span)(using Context): SourcePosition =
+    lookupMagicHeader(sourceFile) match
+      case HasHeader(offset, originalFile) if span.exists && span.start >= offset =>
+        originalFile.atSpan(span.shift(-offset))
+      case _ => sourceFile.atSpan(span)
 
-  def locateMagicHeader(sourceFile: SourceFile)(using Context): MagicHeaderInfo =
-    def findOffset: MagicHeaderInfo =
-      val magicHeader = ctx.settings.YmagicOffsetHeader.value
-      if magicHeader.isEmpty then NoHeader
-      else
-        val text = new String(sourceFile.content())
-        val headerQuoted = java.util.regex.Pattern.quote("///" + magicHeader)
-        val regex = s"(?m)^$headerQuoted:(.+)$$".r
-        regex.findFirstMatchIn(text) match
-          case Some(m) =>
-            val markerOffset = m.start
-            val sourceStartOffset = sourceFile.nextLine(markerOffset)
-            val file = ctx.getFile(m.group(1))
-            platformDependent {
-              if file.exists then
-                HasHeader(sourceStartOffset, ctx.getSource(file))
-              else
-                report.warning(em"original source file not found: ${file.path}")
-                NoHeader
-            } {
-              if file.exists then
-                HasHeader(sourceStartOffset, ctx.getSource(file))
-              else
-                report.warning(em"original source file not found: ${file.path}")
-                NoHeader
-            }
-          case None => NoHeader
-    val result = cache.getOrElseUpdate(sourceFile, findOffset)
-    result
+  private def lookupMagicHeader(sourceFile: SourceFile)(using Context): MagicHeaderInfo =
+    val cache = ctx.base.magicHeaderCache
+    cache.lookup(sourceFile) match
+      case null =>
+        val magicHeader = ctx.settings.YmagicOffsetHeader.value
+        val result =
+          if magicHeader.isEmpty then NoHeader
+          else
+            val text = new String(sourceFile.content())
+            val headerQuoted = java.util.regex.Pattern.quote("///" + magicHeader)
+            val regex = s"(?m)^$headerQuoted:(.+)$$".r
+            regex.findFirstMatchIn(text) match
+              case Some(m) =>
+                val sourceStartOffset = sourceFile.nextLine(m.start)
+                val file = ctx.getFile(m.group(1).nn)
+                if file.exists then
+                  HasHeader(sourceStartOffset, ctx.getSource(file))
+                else
+                  report.warning(em"original source file not found: ${file.path}")
+                  NoHeader
+              case None => NoHeader
+        cache(sourceFile) = result
+        result
+      case result => result
 
 class SourceFile(val file: AbstractFile, computeContent: => Array[Char]) extends interfaces.SourceFile {
   import SourceFile.*
@@ -124,7 +122,7 @@ class SourceFile(val file: AbstractFile, computeContent: => Array[Char]) extends
    * the source is read from Tasty. */
   def content(): Array[Char] = {
     if (myContent == null) myContent = computeContent
-    myContent
+    myContent.nn
   }
 
   private var _maybeInComplete: Boolean = false
@@ -341,10 +339,10 @@ object SourceFile {
   /** Return true if file is a script:
    *  if filename extension is not .scala and has a script header.
    */
-  def isScript(file: AbstractFile | Null, content: Array[Char]): Boolean =
+  def isScript(file: AbstractFile, content: Array[Char]): Boolean =
     ScriptSourceFile.hasScriptHeader(content)
 
-  def apply(file: AbstractFile | Null, codec: Codec): SourceFile =
+  def apply(file: AbstractFile, codec: Codec): SourceFile =
     val chars =
      // Files.exists is slow on Java 8 (https://rules.sonarsource.com/java/tag/performance/RSPEC-3725),
       // so cope with failure.
@@ -357,7 +355,7 @@ object SourceFile {
     else
       SourceFile(file, chars)
 
-  def apply(file: AbstractFile | Null, computeContent: => Array[Char]): SourceFile = new SourceFile(file, computeContent)
+  def apply(file: AbstractFile, computeContent: => Array[Char]): SourceFile = new SourceFile(file, computeContent)
 }
 
 @sharable object NoSource extends SourceFile(NoAbstractFile, Array[Char]()) {

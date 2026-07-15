@@ -22,12 +22,12 @@ import dotty.tools.dotc.core.Constants.Constant
 import dotty.tools.dotc.quoted.Interpreter
 import dotty.tools.dotc.sjsmacros.{MacroRuntimeExports, MacroRuntimeId, MacroRuntimeRegistry, MissingMacroEntryPointException}
 
-import scala.util.control.NonFatal
 import dotty.tools.dotc.util.SrcPos
 import dotty.tools.dotc.util.PlatformDependent.platformDependent
 import dotty.tools.io.AbstractFileClassLoader
 
 import scala.reflect.ClassTag
+import scala.util.control.NonFatal
 
 import dotty.tools.dotc.quoted.{PickledQuotes, QuoteUtils}
 
