@@ -124,7 +124,7 @@ case class DirectorySourcePath(dir: AbstractFile) extends JFileDirectoryLookup[S
   def asSourcePathString: String = asClassPathString
 
   protected def createFileEntry(file: AbstractFile): SourceFileEntry = SourceFileEntry(file)
-  protected def isMatchingFile(f: AbstractFile): Boolean = endsScalaOrJava(f.name)
+  protected def isMatchingFile(f: AbstractFile): Boolean = endsSourceExtension(f.name)
 
   private[dotty] def sources(inPackage: PackageName): Seq[SourceFileEntry] = files(inPackage)
 }
