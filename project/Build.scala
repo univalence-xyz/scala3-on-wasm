@@ -1799,7 +1799,7 @@ object Build {
       jsEnv := new NodeJSEnv(NodeJSEnv.Config().withArgs(sjsCompilerNodeFlags)),
       libraryDependencies ++= Seq(
         "org.scala-lang.modules" % "scala-asm" % "9.9.0-scala-1",
-        Dependencies.compilerInterface,
+        Dependencies.sbtCompilerInterface,
         ("org.scala-js" %%% "scalajs-linker" % scalaJSVersion).cross(CrossVersion.for3Use2_13),
       ),
       // Add the source directories for the compiler (boostrapped)
@@ -1888,7 +1888,7 @@ object Build {
             )
 
         s.log.info("Running this codebase's Scala.js compilation tests with scala3-compiler-sjs")
-        val exit = scala.sys.process.Process(command, workingDirectory).!(scala.sys.process.ProcessLogger(
+        val exit = _root_.scala.sys.process.Process(command, workingDirectory).!(_root_.scala.sys.process.ProcessLogger(
           line => s.log.info(line),
           line => s.log.error(line),
         ))
@@ -2099,10 +2099,10 @@ object Build {
           val sjsSources = (trgDir ** "*.scala").get.toSet
           sjsSources.foreach(f => {
             val lines = IO.readLines(f)
-            val linesWithPackage = replacePackage(lines) {
+            val linesWithPackage = Shading.replacePackage(lines) {
               case "org.scalajs.ir" => "dotty.tools.sjs.ir"
             }
-            IO.writeLines(f, insertUnsafeNullsImport(linesWithPackage))
+            IO.writeLines(f, Shading.insertUnsafeNullsImport(linesWithPackage))
           })
           sjsSources
         } (Set(scalaJSIRSourcesJar)).toSeq
