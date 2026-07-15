@@ -57,9 +57,9 @@ object SjsMacroIRClosure:
       collectTypeRef(name.resultTypeRef)
 
     private def collectType(tpe: Types.Type): Unit = tpe match
-      case Types.ClassType(className, _) =>
+      case Types.ClassType(className, _, _) =>
         add(className)
-      case Types.ArrayType(arrayTypeRef, _) =>
+      case Types.ArrayType(arrayTypeRef, _, _) =>
         collectTypeRef(arrayTypeRef)
       case Types.ClosureType(paramTypes, resultType, _) =>
         paramTypes.foreach(collectType)

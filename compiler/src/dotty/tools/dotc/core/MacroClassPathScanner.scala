@@ -181,8 +181,8 @@ object MacroClassPathScanner:
       List(macroEntryPointsModuleClassDef(packageName, moduleClassName, entries))
 
   private def macroEntryPointsModuleClassDef(packageName: String, moduleClassName: ClassName, entries: List[MacroEntryPoint])(using Context, Position): js.ClassDef =
-    val moduleType = jstpe.ClassType(moduleClassName, nullable = true)
-    val moduleTypeNonNull = jstpe.ClassType(moduleClassName, nullable = false)
+    val moduleType = jstpe.ClassType(moduleClassName, nullable = true, exact = false)
+    val moduleTypeNonNull = jstpe.ClassType(moduleClassName, nullable = false, exact = false)
     val writeReplaceName = js.MethodIdent(MethodName("writeReplace", Nil, jswkn.ObjectRef))
     val moduleSerializationProxyClass = encodeClassName(defn.ModuleSerializationProxyClass)
     val writeReplaceCtor = js.MethodIdent(MethodName.constructor(List(jstpe.ClassRef(jswkn.ClassClass))))
@@ -317,7 +317,7 @@ object MacroClassPathScanner:
     case jstpe.ClassRef(className) if className == jswkn.ObjectClass =>
       jstpe.AnyType
     case jstpe.ClassRef(className) =>
-      jstpe.ClassType(className, nullable = true)
+      jstpe.ClassType(className, nullable = true, exact = false)
     case arrayTypeRef: jstpe.ArrayTypeRef =>
       jstpe.ArrayType(arrayTypeRef, nullable = true)
     case transientTypeRef: jstpe.TransientTypeRef =>

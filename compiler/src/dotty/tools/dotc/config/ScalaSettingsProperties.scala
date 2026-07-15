@@ -2,7 +2,6 @@ package dotty.tools.dotc
 package config
 
 import Settings.Setting.ChoiceWithHelp
-import dotty.tools.backend.jvm.BackendUtils.classfileVersionMap
 import dotty.tools.io.{AbstractFile, Directory, PlainDirectory, NoAbstractFile}
 import dotty.tools.dotc.util.PlatformDependent.platformDependent
 
