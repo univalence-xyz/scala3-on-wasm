@@ -131,7 +131,7 @@ abstract class AbstractFile extends Iterable[AbstractFile] {
     if (file == null) null else file.lookupName(parts(i), directory = directory)
   end lookupPath
 
-  def lookupName(name: String, directory: Boolean): AbstractFile
+  def lookupName(name: String, directory: Boolean): AbstractFile | Null
 
   def lookupNameUnchecked(name: String, directory: Boolean): AbstractFile
 
