@@ -1757,7 +1757,9 @@ object Build {
         val silent = _root_.scala.sys.process.ProcessLogger(_ => (), _ => ())
         _root_.scala.sys.process.Process(Seq("node", flag, "-e", "0")).!(silent) == 0
       } catch { case _root_.scala.util.control.NonFatal(_) => false }
-    List(
+    // The 3.9-based compiler overflows V8's ~4GB default heap when compiling
+    // large batches (e.g. the sjsJUnitTests sources) under the Wasm backend.
+    "--max-old-space-size=8192" :: List(
       "--experimental-wasm-exnref",
       "--experimental-wasm-jspi",
       "--experimental-wasm-imported-strings",
