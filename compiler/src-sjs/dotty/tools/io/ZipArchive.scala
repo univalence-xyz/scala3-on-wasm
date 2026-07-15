@@ -169,7 +169,7 @@ final class FileZipArchive(jpath: JPath, release: Option[String]) extends ZipArc
       if entry == null then None
       else Some(JSByteArrays.toByteArray(js.await(entry.async("uint8array"))).length)
 
-  lazy val (root, allDirs): (DirEntry, collection.Map[String, DirEntry]) =
+  lazy val (root: DirEntry, allDirs: collection.Map[String, DirEntry]) =
     val root = new DirEntry("/", null)
     val dirs = mutable.HashMap[String, DirEntry]("/" -> root)
 

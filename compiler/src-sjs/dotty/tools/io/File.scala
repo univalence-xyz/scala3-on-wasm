@@ -12,11 +12,11 @@ object File {
     if osName.startsWith("Windows") then ";" else ":"
   def separator: String = "/"
 
-  def apply(path: String)(implicit codec: Codec): File = apply(JSPath(path))(codec)
-  def apply(path: JPath)(implicit codec: Codec): File = new File(path)(codec)
+  def apply(path: String)(implicit codec: Codec): File = apply(JSPath(path))(using codec)
+  def apply(path: JPath)(implicit codec: Codec): File = new File(path)(using codec)
 
   def apply(url: URL)(implicit codec: Codec): File =
-    apply(url.toString)(codec)
+    apply(url.toString)(using codec)
 }
 
 /**
