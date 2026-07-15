@@ -319,6 +319,6 @@ object MacroClassPathScanner:
     case jstpe.ClassRef(className) =>
       jstpe.ClassType(className, nullable = true, exact = false)
     case arrayTypeRef: jstpe.ArrayTypeRef =>
-      jstpe.ArrayType(arrayTypeRef, nullable = true)
+      jstpe.ArrayType(arrayTypeRef, nullable = true, exact = false)
     case transientTypeRef: jstpe.TransientTypeRef =>
       transientTypeRef.tpe

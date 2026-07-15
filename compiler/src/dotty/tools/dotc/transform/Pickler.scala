@@ -31,6 +31,7 @@ import dotty.tools.dotc.sbt.asyncZincPhasesCompleted
 import dotty.tools.dotc.util.chaining.*
 import dotty.tools.dotc.util.PlatformDependent.platformDependent
 import scala.concurrent.ExecutionContext
+import scala.util.control.NonFatal
 import java.util.concurrent.atomic.AtomicBoolean
 import java.nio.file.Files
 
