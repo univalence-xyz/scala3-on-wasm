@@ -22,6 +22,7 @@ import dotty.tools.sbtplugin.DottyJSPlugin
 
 import sbt.ScriptedPlugin.autoImport._
 import com.typesafe.tools.mima.plugin.MimaPlugin.autoImport._
+import org.scalajs.sbtplugin.ScalaJSPlugin
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
 
 import org.scalajs.linker.interface.ESVersion
@@ -1750,11 +1751,12 @@ object Build {
    * the node on PATH still accepts.
    */
   private lazy val sjsCompilerNodeFlags: List[String] = {
+    // _root_ because the `scala` InputKey (line ~55) shadows the scala package here.
     def nodeAccepts(flag: String): Boolean =
       try {
-        val silent = scala.sys.process.ProcessLogger(_ => (), _ => ())
-        scala.sys.process.Process(Seq("node", flag, "-e", "0")).!(silent) == 0
-      } catch { case scala.util.control.NonFatal(_) => false }
+        val silent = _root_.scala.sys.process.ProcessLogger(_ => (), _ => ())
+        _root_.scala.sys.process.Process(Seq("node", flag, "-e", "0")).!(silent) == 0
+      } catch { case _root_.scala.util.control.NonFatal(_) => false }
     List(
       "--experimental-wasm-exnref",
       "--experimental-wasm-jspi",
