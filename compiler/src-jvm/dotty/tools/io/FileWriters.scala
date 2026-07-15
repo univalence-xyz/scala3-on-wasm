@@ -74,6 +74,9 @@ object FileWriters {
   enum Report:
     case Error(message: Context => Message, position: SourcePosition)
     case Warning(message: Context => Message, position: SourcePosition)
+    // Emitted only by the Scala.js-hosted linker bridge; kept in both platform
+    // flavors so shared code can match on Report exhaustively.
+    case OptimizerWarning(message: Context => Message, site: String, position: SourcePosition)
     case Log(message: String)
 
   final class BufferingReporter extends DelayedReporter {

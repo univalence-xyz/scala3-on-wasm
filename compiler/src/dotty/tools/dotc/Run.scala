@@ -306,6 +306,8 @@ extends ImplicitRunInfo, ConstraintRunInfo, cc.CaptureRunInfo {
           ctx.reporter.report(Diagnostic.Error(msg(ctx), pos))
         case FileWriters.Report.Warning(msg, pos) =>
           ctx.reporter.report(Diagnostic.Warning(msg(ctx), pos))
+        case FileWriters.Report.OptimizerWarning(msg, site, pos) =>
+          ctx.reporter.report(new Diagnostic.OptimizerWarning(msg(ctx), site, pos))
         case FileWriters.Report.Log(msg) =>
           ctx.reporter.report(Diagnostic.Info(msg, NoSourcePosition))
 

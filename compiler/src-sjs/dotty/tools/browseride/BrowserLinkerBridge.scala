@@ -28,8 +28,7 @@ object BrowserLinkerBridge:
     .withSourceMap(false)
     .withModuleKind(ModuleKind.ESModule)
   private val compilerModuleConfig = baseConfig
-    .withExperimentalUseWebAssembly(true)
-    .withESFeatures(_.withESVersion(ESVersion.ES2018))
+    .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2018))
   private val moduleLinker = new LinkerSession(baseConfig)
   private val compilerModuleLinker = new LinkerSession(compilerModuleConfig)
 
