@@ -19,7 +19,7 @@ class ExtractDependencies extends Phase:
   override def description: String = ExtractDependencies.description
   override def isCheckable: Boolean = false
   override def skipIfJava(using Context): Boolean = false
-  protected def run(using Context): Unit =
+  def run(using Context): Unit =
     val unit = ctx.compilationUnit
     val rec = unit.depRecorder
     val collector = ExtractDependenciesCollector(rec)
