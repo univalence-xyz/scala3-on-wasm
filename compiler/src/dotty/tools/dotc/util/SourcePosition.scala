@@ -30,7 +30,7 @@ extends SrcPos, interfaces.SourcePosition, Showable:
 
   /** Extracts the lines from the underlying source file as `Array[Char]`*/
   def linesSlice: Array[Char] =
-    source.content.slice(source.startOfLine(start), source.nextLine(end))
+    source.content().slice(source.startOfLine(start), source.nextLine(end))
 
   /** The lines of the position */
   def lines: Range = {
@@ -92,7 +92,7 @@ object SourcePosition:
 end SourcePosition
 
 /** A sentinel for a non-existing source position */
-@sharable object NoSourcePosition extends SourcePosition(NoSource, NoSpan) {
+@sharable object NoSourcePosition extends SourcePosition(NoSource, NoSpan, null.asInstanceOf[SourcePosition]) {
   override def line: Int = -1
   override def column: Int = -1
   override def toString: String = "?"

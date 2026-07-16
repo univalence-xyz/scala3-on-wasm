@@ -69,7 +69,11 @@ class SymbolicXMLBuilder(parser: Parser, preserveWS: Boolean)(using Context) {
 
   // convenience methods
   private def LL[A](x: A*): List[List[A]] = List(x.toList)
-  private def const(x: Any) = Literal(Constant(x))
+  private def const(x: Any) = Literal(x match
+    case null => Constant(null)
+    case str: String => Constant(str)
+    case _ => throw new IllegalArgumentException(s"unsupported XML literal constant: ${x.getClass}")
+  )
   private def wild                          = Ident(nme.WILDCARD)
   private def wildStar                      = Ident(tpnme.WILDCARD_STAR)
   private def _scala(name: Name)            = scalaDot(name)

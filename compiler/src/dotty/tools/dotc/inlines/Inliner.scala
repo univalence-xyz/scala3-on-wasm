@@ -19,6 +19,7 @@ import Nullables.computeNullableDeeply
 import collection.mutable
 import reporting.trace
 import util.Spans.Span
+import util.PlatformDependent.platformDependent
 import dotty.tools.dotc.transform.Splicer
 import dotty.tools.dotc.transform.BetaReduce
 import quoted.QuoteUtils
@@ -1215,8 +1216,15 @@ class Inliner(val call: tpd.Tree)(using Context):
           ctx.compilationUnit.suspend(hints.nn.toList.mkString(", ")) // this throws a SuspendException
 
     val evaluatedSplice =
-      inContext(quoted.MacroExpansion.context(inlinedFrom)):
-        Splicer.splice(body, splicePos, inlinedFrom.srcPos, MacroClassLoader.fromContext)
+      platformDependent(
+        inContext(quoted.MacroExpansion.context(inlinedFrom)):
+          Splicer.splice(body, splicePos, inlinedFrom.srcPos, MacroClassLoader.fromContext)
+      )(
+        {
+          inContext(quoted.MacroExpansion.context(inlinedFrom)):
+            Splicer.spliceRegistered(body, call.symbol.asTerm, splicePos, inlinedFrom.srcPos)
+        }
+      )
     val inlinedNormalizer = new TreeMap {
       override def transform(tree: tpd.Tree)(using Context): tpd.Tree = tree match {
         case tree @ Inlined(_, Nil, expr) if tree.inlinedFromOuterScope && enclosingInlineds.isEmpty => transform(expr)
