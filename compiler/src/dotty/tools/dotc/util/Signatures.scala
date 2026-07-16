@@ -290,7 +290,7 @@ object Signatures {
     for
       previousArg <- untpdArgs.lift(previousArgIndex)
       nextArg = untpdArgs.lift(previousArgIndex + 1)
-      text = ctx.source.content.slice(previousArg.span.end - 1, nextArg.map(_.span.start).getOrElse(span.end))
+      text = ctx.source.content().slice(previousArg.span.end - 1, nextArg.map(_.span.start).getOrElse(span.end))
       commaIndex = text.indexOf(',')
       if commaIndex != -1
     yield
@@ -714,5 +714,4 @@ object Signatures {
     if (alternativesScores.isEmpty) 0
     else alternativesScores.zipWithIndex.maxBy(_._1)._2
 }
-
 

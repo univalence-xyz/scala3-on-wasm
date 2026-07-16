@@ -13,7 +13,6 @@ import dotty.tools.io.Jar
 import dotty.tools.runner.ScalaClassLoader
 import java.nio.file.Paths
 import dotty.tools.dotc.config.CommandLineParser
-import dotty.tools.scripting.StringDriver
 
 enum CompileMode:
   case Guess

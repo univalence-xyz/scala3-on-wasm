@@ -62,7 +62,7 @@ class InstrumentCoverage extends MacroTransform with IdentityDenotTransformer:
     coverageExcludeClasslikePatterns = ctx.settings.coverageExcludeClasslikes.value.map(_.r.pattern)
     coverageExcludeFilePatterns = ctx.settings.coverageExcludeFiles.value.map(_.r.pattern)
 
-    ctx.base.coverage.nn.removeStatementsFromFile(ctx.compilationUnit.source.file.absolute.jpath)
+    ctx.base.coverage.nn.removeStatementsFromFile(java.nio.file.Paths.get(ctx.compilationUnit.source.file.absolute.path))
     super.run
 
     Serializer.serialize(ctx.base.coverage.nn, outputPath, ctx.settings.sourceroot.value)
@@ -120,7 +120,7 @@ class InstrumentCoverage extends MacroTransform with IdentityDenotTransformer:
         // +1 to account for the line number starting at 1
         // the internal line number is 0-base https://github.com/scala/scala3/blob/18ada516a85532524a39a962b2ddecb243c65376/compiler/src/dotty/tools/dotc/util/SourceFile.scala#L173-L176
         line = pos.line + 1,
-        desc = sourceFile.content.slice(pos.start, pos.end).mkString,
+        desc = sourceFile.content().slice(pos.start, pos.end).mkString,
         symbolName = tree.symbol.name.toSimpleName.show,
         treeName = tree.getClass.getSimpleName,
         branch

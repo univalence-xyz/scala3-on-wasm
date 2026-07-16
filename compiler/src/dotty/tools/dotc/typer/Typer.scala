@@ -1157,7 +1157,8 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     record("typedNumber")
     val digits = tree.digits
     val target = pt.dealias
-    def lit(value: Any) = Literal(Constant(value)).withSpan(tree.span)
+    def lit[T](value: T)(using Constant.ValueToConstant[T]) =
+      Literal(Constant.fromValue(value)).withSpan(tree.span)
     try {
       // Special case primitive numeric types
       if (target.isRef(defn.IntClass) ||

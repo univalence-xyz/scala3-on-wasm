@@ -35,13 +35,17 @@ import org.scalajs.sbtplugin.ScalaJSPlugin
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
 
 import org.scalajs.linker.interface.ESVersion
+import org.scalajs.linker.interface.ModuleKind
+import org.scalajs.jsenv.nodejs.NodeJSEnv
 
 import sbtbuildinfo.BuildInfoPlugin
 import sbtbuildinfo.BuildInfoPlugin.autoImport._
 import sbttastymima.TastyMiMaPlugin
 import sbttastymima.TastyMiMaPlugin.autoImport._
 
+import scala.jdk.CollectionConverters._
 import scala.util.Properties.isJavaAtLeast
+import scala.util.control.NonFatal
 
 import scala.xml.{Node => XmlNode, NodeSeq => XmlNodeSeq, _}
 import scala.xml.transform.{RewriteRule, RuleTransformer}
@@ -169,6 +173,13 @@ object Build {
   val ideTestsDependencyClasspath = taskKey[Seq[File]]("Dependency classpath to use in IDE tests")
 
   val fetchScalaJSSource = taskKey[File]("Fetch the sources of Scala.js")
+  val bundleSjsCompilerLibs = taskKey[File]("Bundle the libraries required by scala3-compiler-sjs validation tests")
+  val sjsCompilerUnitTest = taskKey[Unit]("Compile, link, and run sjsJUnitTests with scala3-compiler-sjs")
+  val sjsCompilerCompilationTest = taskKey[Unit]("Run this codebase's Scala.js compilation tests")
+  val sjsCompilerValidationTest = taskKey[Unit]("Run the minimal scala3-compiler-sjs CI validation test suite")
+  val prepareBrowserIDE = taskKey[File]("Prepare the static browser IDE assets for scala3-compiler-sjs")
+  val buildSEA = taskKey[File]("Build a self-contained Node SEA binary of scala3-compiler-sjs")
+  val packageBrowserBundle = taskKey[File]("Package the browser compiler bundle as an npm tarball")
 
   val extraDevelocityCacheInputFiles = taskKey[Seq[Path]]("Extra input files for caching")
 
@@ -622,6 +633,41 @@ object Build {
       mimaBackwardIssueFilters := MiMaFilters.Interfaces.BackwardsBreakingChanges,
       customMimaReportBinaryIssues("MiMaFilters.Interfaces"),
     )
+
+  lazy val `scala3-interfaces-sjs` = project.in(file("interfaces-sjs"))
+  .dependsOn(`scala3-library-sjs`)
+  .enablePlugins(DottyJSPlugin, ScalaJSPlugin)
+  .settings(publishSettings)
+  .settings(commonMiMaSettings)
+  .settings(
+    name          := "interfaces-sjs",
+    moduleName    := "interfaces-sjs",
+    version       := dottyVersion,
+    versionScheme := Some("semver-spec"),
+    scalaVersion  := dottyNonBootstrappedVersion,
+    crossPaths    := true, // org.scala-lang:tasty-core has a crosspath
+    // sbt shouldn't add stdlib automatically, we depend on `scala3-library-sjs`
+    autoScalaLibrary := false,
+    // Add the source directories for the stdlib (non-boostrapped)
+    Compile / unmanagedSourceDirectories := Seq(baseDirectory.value / "src"),
+    Test    / unmanagedSourceDirectories := Seq(baseDirectory.value / "test"),
+    Compile / unmanagedSourceDirectories += baseDirectory.value / "src-sjs",
+    // Packaging configuration of the stdlib
+    Compile / packageBin / publishArtifact := true,
+    Compile / packageDoc / publishArtifact := true,
+    Compile / packageSrc / publishArtifact := true,
+    // Only publish compilation artifacts, no test artifacts
+    Test    / publishArtifact := false,
+    // Do not allow to publish this project for now
+    publish / skip := false,
+    // Project specific target folder. sbt doesn't like having two projects using the same target folder
+    target := target.value / "interfaces-sjs",
+    // Configure to use the non-bootstrapped compiler
+    bootstrappedScalaInstanceSettings,
+    mimaForwardIssueFilters := MiMaFilters.Interfaces.ForwardsBreakingChanges,
+    mimaBackwardIssueFilters := MiMaFilters.Interfaces.BackwardsBreakingChanges,
+    customMimaReportBinaryIssues("MiMaFilters.Interfaces"),
+  )
 
   /** Find an artifact with the given `name` in `classpath` */
   def findArtifact(classpath: Def.Classpath, name: String): File = classpath
@@ -1545,6 +1591,7 @@ object Build {
       autoScalaLibrary := false,
       // Add the source directories for the compiler (non-boostrapped)
       Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
+      Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-jvm",
       Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-non-bootstrapped",
       Compile / unmanagedResourceDirectories += baseDirectory.value / "resources",
       // Add the test directories for the compiler (non-bootstrapped)
@@ -1682,6 +1729,7 @@ object Build {
       autoScalaLibrary := false,
       // Add the source directories for the compiler (boostrapped)
       Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
+      Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-jvm",
       Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-bootstrapped",
       Compile / unmanagedResourceDirectories += baseDirectory.value / "resources",
       // Add the test directories for the compiler (bootstrapped)
@@ -1793,6 +1841,378 @@ object Build {
           s"-Ddotty.tools.dotc.semanticdb.test=${(ThisBuild / baseDirectory).value/"tests"/"semanticdb"}",
         )
       },
+    )
+
+  /* Wasm feature flags needed to run the compiler's wasm output on Node.
+   * Newer Node/V8 versions ship these features by default and REMOVE the
+   * flags, making node error out with "bad option", so keep only the flags
+   * the node on PATH still accepts.
+   */
+  private lazy val sjsCompilerNodeFlags: List[String] = {
+    def nodeAccepts(flag: String): Boolean =
+      try {
+        val silent = scala.sys.process.ProcessLogger(_ => (), _ => ())
+        scala.sys.process.Process(Seq("node", flag, "-e", "0")).!(silent) == 0
+      } catch { case scala.util.control.NonFatal(_) => false }
+    List(
+      "--experimental-wasm-exnref",
+      "--experimental-wasm-jspi",
+      "--experimental-wasm-imported-strings",
+    ).filter(nodeAccepts)
+  }
+
+  /* Configuration of the org.scala-lang:scala3-compiler_3:*.**.**-sjs project */
+  lazy val sjsCompilerBrowserIDEExampleMacros = Project("sjsCompilerBrowserIDEExampleMacros", file("compiler/browser-ide/example-macros"))
+    .enablePlugins(DottyJSPlugin)
+    .dependsOn(`scala3-library-sjs`)
+    .settings(
+      regularScalaJSProjectSettings,
+      name := "sjs-compiler-browser-ide-example-macros",
+      scalaJSUseMainModuleInitializer := false,
+      publish / skip := true,
+      Test / fork := false,
+    )
+
+  lazy val `scala3-compiler-sjs` = project.in(file("compiler"))
+    .dependsOn(`scala3-interfaces-sjs`, `scala3-library-sjs`)
+    .enablePlugins(DottyJSPlugin, ScalaJSPlugin)
+    .settings(publishSettings)
+    .settings(
+      name          := "scala3-compiler-sjs",
+      moduleName    := "scala3-compiler-sjs",
+      version       := dottyVersion,
+      versionScheme := Some("semver-spec"),
+      scalaVersion  := dottyNonBootstrappedVersion,
+      crossPaths    := false, // org.scala-lang:scala3-compiler has a crosspath
+      // sbt shouldn't add stdlib automatically, we depend on `scala3-library-nonbootstrapped`
+      autoScalaLibrary := false,
+      // Drop `-Werror` for the JS compiler, mirroring the JVM compiler projects
+      // (`scala3-compiler-nonbootstrapped` / `scala3-compiler-bootstrapped-new`),
+      // which replace scalacOptions to omit it. 3.8.1 still keeps the global
+      // `-Werror` (upstream only disabled it in 3.8.3), but the compiler sources
+      // carry deprecation warnings that must not fail the build -- e.g. the
+      // deprecated `java.net.URL(String)` constructor in src-sjs AbstractFile and
+      // `scala.collection.mutable.AnyRefMap` in the generated scalajs-ir sources.
+      scalacOptions --= Seq("-Werror"),
+      // The current JS-side archive handling uses JSPI/await, so the compiler
+      // itself still runs through the Scala.js Wasm backend under Node.
+      scalaJSLinkerConfig ~= {
+        _.withExperimentalUseWebAssembly(true)
+          .withModuleKind(ModuleKind.ESModule)
+          .withESFeatures(_.withESVersion(ESVersion.ES2018))
+      },
+      jsEnv := new NodeJSEnv(NodeJSEnv.Config().withArgs(sjsCompilerNodeFlags)),
+      libraryDependencies ++= Seq(
+        "org.scala-lang.modules" % "scala-asm" % "9.9.0-scala-1",
+        Dependencies.compilerInterface,
+        ("org.scala-js" %%% "scalajs-linker" % scalaJSVersion).cross(CrossVersion.for3Use2_13),
+      ),
+      // Add the source directories for the compiler (boostrapped)
+      Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
+      Compile / unmanagedSourceDirectories += (`tasty-core-bootstrapped-new` / baseDirectory).value / "src",
+      Compile / unmanagedSourceDirectories += baseDirectory.value / "src-sjs",
+      Compile / unmanagedResourceDirectories += baseDirectory.value / "resources",
+      // Specify the default entry point of the compiler
+      Compile / mainClass := Some("dotty.tools.dotc.MainJS"),
+      scalaJSUseMainModuleInitializer := false,
+      // Add entry's to the MANIFEST
+      packageOptions += ManifestAttributes(("Git-Hash", VersionUtil.gitHash)), // Used by the REPL
+      // Packaging configuration of the stdlib
+      Compile / packageBin / publishArtifact := true,
+      Compile / packageDoc / publishArtifact := true,
+      Compile / packageSrc / publishArtifact := true,
+      // Do not allow to publish this project for now
+      publish / skip := false,
+      // Project specific target folder. sbt doesn't like having two projects using the same target folder
+      target := target.value / "scala3-compiler-sjs",
+      // Generate compiler.properties, used by sbt
+      Compile / resourceGenerators += generateCompilerProperties.taskValue,
+      bundleSjsCompilerLibs := {
+        val s = streams.value
+        val scalaLibClasses = (`scala-library-bootstrapped` / Compile / classDirectory).value
+        val scalaLibSjsClasses = (`scala-library-sjs` / Compile / classDirectory).value
+        val _ = (`scala-library-bootstrapped` / Compile / compile).value
+        val _2 = (`scala-library-sjs` / Compile / compile).value
+
+        val report = (Compile / update).value
+        val scalaJSLibJar = report.select(
+          module = (_: ModuleID).name.startsWith("scalajs-library_")
+        ).headOption.getOrElse(sys.error("Could not find scalajs-library JAR"))
+        val scalaJSJavaLibJar = report.select(
+          module = (_: ModuleID).name == "scalajs-javalib"
+        ).headOption.getOrElse(sys.error("Could not find scalajs-javalib JAR"))
+
+        SjsCompilerBrowserIDE.bundleCompilerLibs(
+          target.value,
+          scalaLibClasses,
+          scalaLibSjsClasses,
+          scalaJSLibJar,
+          scalaJSJavaLibJar,
+          s.log,
+        )
+      },
+      sjsCompilerValidationTest := {
+        val s = streams.value
+        val browserIdeDir = prepareBrowserIDE.value
+        SjsCompilerValidationTest.runBrowserIDEValidation(
+          browserIdeDir,
+          target.value / "sjs-compiler-browser-validation-test",
+          s.log,
+        )
+        s.log.info("scala3-compiler-sjs validation test passed")
+      },
+      sjsCompilerCompilationTest := {
+        val s = streams.value
+        val outputDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+        (Compile / fullLinkJS).value
+
+        val testDir = target.value / "sjs-compiler-compilation-test"
+        val classpathDir = testDir / "classpath"
+        val rtJar = classpathDir / "rt.jar"
+        if (!rtJar.exists()) {
+          s.log.info(s"Extracting java.base from jrt:/ to $rtJar")
+          SjsCompilerBrowserIDE.extractRTJar(rtJar)
+        }
+
+        val compilerMain = outputDir / "main.js"
+        val testClasspath = (sjsCompilerTests / Test / fullClasspath).value.map(_.data)
+        val testJavaOptions = (sjsCompilerTests / Test / javaOptions).value
+        val testForkOptions = (sjsCompilerTests / Test / forkOptions).value
+        val workingDirectory = testForkOptions.workingDirectory.getOrElse((ThisBuild / baseDirectory).value)
+        val command =
+          Seq("java") ++
+            testJavaOptions ++
+            Seq(
+              s"-Ddotty.tests.sjsCompilerMain=${compilerMain.getAbsolutePath}",
+              s"-Ddotty.tests.sjsCompilerNodeFlags=${sjsCompilerNodeFlags.mkString(",")}",
+              s"-Ddotty.tests.sjsCompilerExtraClasspath=${rtJar.getAbsolutePath}",
+              "-cp",
+              testClasspath.map(_.getAbsolutePath).mkString(File.pathSeparator),
+              "org.junit.runner.JUnitCore",
+              "dotty.tools.dotc.ScalaJSCompilationTests",
+            )
+
+        s.log.info("Running this codebase's Scala.js compilation tests with scala3-compiler-sjs")
+        val exit = scala.sys.process.Process(command, workingDirectory).!(scala.sys.process.ProcessLogger(
+          line => s.log.info(line),
+          line => s.log.error(line),
+        ))
+        if (exit != 0)
+          sys.error(s"scala3-compiler-sjs compilation test failed with exit code $exit")
+      },
+      sjsCompilerUnitTest := {
+        val s = streams.value
+        val outputDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+        (Compile / fullLinkJS).value
+        val suiteSources =
+          (sjsJUnitTests / Compile / sources).value ++
+            (sjsJUnitTests / Test / sources).value
+        val suiteResources = (sjsJUnitTests / Test / resources).value
+        val suiteJsEnvScripts =
+          suiteResources.filter(_.getName == "NonNativeJSTypeTestNatives.js")
+        val suiteClasspath = (sjsJUnitTests / Test / externalDependencyClasspath).value.map(_.data)
+        val libsDir = bundleSjsCompilerLibs.value
+        (`scala-library-sjs` / Compile / compile).value
+        val scalaLibClasses = (`scala-library-sjs` / Compile / classDirectory).value
+        val testDir = target.value / "sjs-compiler-unit-test"
+        val classpathDir = testDir / "classpath"
+        val rtJar = classpathDir / "rt.jar"
+        val scalaLibJar = classpathDir / "scala-lib.jar"
+
+        if (!rtJar.exists()) {
+          s.log.info(s"Extracting java.base from jrt:/ to $rtJar")
+          SjsCompilerBrowserIDE.extractRTJar(rtJar)
+        }
+        SjsCompilerBrowserIDE.zipDirectory(scalaLibClasses, scalaLibJar)
+
+        SjsCompilerNodeUnitTest.run(
+          outputDir / "main.js",
+          suiteSources,
+          Seq("-nowarn", "-scalajs-genStaticForwardersForNonTopLevelObjects"),
+          Seq(rtJar, scalaLibJar) ++ suiteClasspath,
+          Seq(libsDir / "sjsir") ++ suiteClasspath,
+          suiteResources,
+          suiteJsEnvScripts,
+          sjsCompilerNodeFlags,
+          testDir,
+          s.log,
+        )
+      },
+      prepareBrowserIDE := {
+        val s = streams.value
+        val browserIdeDir = baseDirectory.value / "browser-ide"
+        val outputDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+        (Compile / fullLinkJS).value
+        val libsDir = bundleSjsCompilerLibs.value
+        (`scala-library-sjs` / Compile / compile).value
+        val scalaLibClasses = (`scala-library-sjs` / Compile / classDirectory).value
+        val report = (Compile / update).value
+        val scalaJSLibJar = report.select(
+          module = (_: ModuleID).name.startsWith("scalajs-library_")
+        ).headOption.getOrElse(sys.error("Could not find scalajs-library JAR"))
+        val assetsDir = target.value / "browser-ide-assets"
+        val rtJar = assetsDir / "rt.jar"
+        val scalaLibJar = assetsDir / "scala-lib.jar"
+        val compilerIRZip = assetsDir / "compiler-sjsir.zip"
+        val runtimeIRZip = assetsDir / "runtime-sjsir.zip"
+        val exampleMacroIRZip = assetsDir / "browser-ide-example-macro-sjsir.zip"
+        val jszipDist = baseDirectory.value / "node_modules" / "jszip" / "dist" / "jszip.js"
+        val exampleMacroJar = (sjsCompilerBrowserIDEExampleMacros / Compile / packageBin).value
+
+        if (!rtJar.exists()) {
+          s.log.info(s"Extracting java.base from jrt:/ to $rtJar")
+          SjsCompilerBrowserIDE.extractRTJar(rtJar)
+        }
+
+        s.log.info(s"Packing runtime Scala.js IR into $runtimeIRZip")
+        SjsCompilerBrowserIDE.zipDirectory(libsDir / "sjsir", runtimeIRZip)
+        s.log.info(s"Packing compiler Scala.js IR into $compilerIRZip")
+        SjsCompilerBrowserIDE.zipIRClasspath((Compile / fullClasspath).value.map(_.data), compilerIRZip)
+        s.log.info(s"Packing Scala.js library classes into $scalaLibJar")
+        SjsCompilerBrowserIDE.zipDirectory(scalaLibClasses, scalaLibJar)
+        s.log.info(s"Packing browser IDE example macro Scala.js IR into $exampleMacroIRZip")
+        SjsCompilerBrowserIDE.zipIRClasspath(Seq((sjsCompilerBrowserIDEExampleMacros / Compile / classDirectory).value), exampleMacroIRZip)
+
+        if (!jszipDist.exists())
+          sys.error("Missing Node dependency `jszip`. Run `cd compiler && npm install` before preparing browser IDE assets.")
+
+        SjsCompilerBrowserIDE.prepareBrowserIDE(
+          browserIdeDir,
+          outputDir,
+          compilerIRZip,
+          scalaLibJar,
+          scalaJSLibJar,
+          rtJar,
+          runtimeIRZip,
+          exampleMacroJar,
+          exampleMacroIRZip,
+          jszipDist,
+          s.log,
+        )
+      },
+      buildSEA := {
+        val s = streams.value
+        val outputDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+        (Compile / fullLinkJS).value
+        (`scala-library-sjs` / Compile / compile).value
+        val scalaLibClasses = (`scala-library-sjs` / Compile / classDirectory).value
+        val report = (Compile / update).value
+        val scalaJSLibJar = report.select(
+          module = (_: ModuleID).name.startsWith("scalajs-library_")
+        ).headOption.getOrElse(sys.error("Could not find scalajs-library JAR"))
+        val seaDir = target.value / "sea"
+        val classpathDir = seaDir / "classpath"
+        val rtJar = classpathDir / "rt.jar"
+        val scalaLibJar = classpathDir / "scala-lib.jar"
+        val jszipModuleDir = baseDirectory.value / "node_modules" / "jszip"
+
+        if (!rtJar.exists()) {
+          s.log.info(s"Extracting java.base from jrt:/ to $rtJar")
+          SjsCompilerBrowserIDE.extractRTJar(rtJar)
+        }
+        SjsCompilerBrowserIDE.zipDirectory(scalaLibClasses, scalaLibJar)
+
+        val binary = SjsCompilerSEA.build(seaDir, outputDir, rtJar, scalaLibJar, scalaJSLibJar, jszipModuleDir, s.log)
+        val distBinary = (ThisBuild / baseDirectory).value / "dist" / "scalac"
+        IO.copyFile(binary, distBinary)
+        distBinary.setExecutable(true, false)
+        s.log.info(s"Copied SEA binary to $distBinary")
+        distBinary
+      },
+      packageBrowserBundle := {
+        val s = streams.value
+        val outputDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+        (Compile / fullLinkJS).value
+        val libsDir = bundleSjsCompilerLibs.value
+        (`scala-library-sjs` / Compile / compile).value
+        val scalaLibClasses = (`scala-library-sjs` / Compile / classDirectory).value
+        val report = (Compile / update).value
+        val scalaJSLibJar = report.select(
+          module = (_: ModuleID).name.startsWith("scalajs-library_")
+        ).headOption.getOrElse(sys.error("Could not find scalajs-library JAR"))
+        // Reuse the same staging dir as prepareBrowserIDE so the rt.jar
+        // extraction and the IR zips are shared and cached across both tasks.
+        val assetsDir = target.value / "browser-ide-assets"
+        val rtJar = assetsDir / "rt.jar"
+        val scalaLibJar = assetsDir / "scala-lib.jar"
+        val compilerIRZip = assetsDir / "compiler-sjsir.zip"
+        val runtimeIRZip = assetsDir / "runtime-sjsir.zip"
+        val jszipDist = baseDirectory.value / "node_modules" / "jszip" / "dist" / "jszip.js"
+
+        if (!rtJar.exists()) {
+          s.log.info(s"Extracting java.base from jrt:/ to $rtJar")
+          SjsCompilerBrowserIDE.extractRTJar(rtJar)
+        }
+
+        s.log.info(s"Packing runtime Scala.js IR into $runtimeIRZip")
+        SjsCompilerBrowserIDE.zipDirectory(libsDir / "sjsir", runtimeIRZip)
+        s.log.info(s"Packing compiler Scala.js IR into $compilerIRZip")
+        SjsCompilerBrowserIDE.zipIRClasspath((Compile / fullClasspath).value.map(_.data), compilerIRZip)
+        s.log.info(s"Packing Scala.js library classes into $scalaLibJar")
+        SjsCompilerBrowserIDE.zipDirectory(scalaLibClasses, scalaLibJar)
+
+        if (!jszipDist.exists())
+          sys.error("Missing Node dependency `jszip`. Run `cd compiler && npm install` before packaging the browser bundle.")
+
+        SjsCompilerBrowserBundle.build(
+          target.value / "browser-bundle",
+          outputDir,
+          baseDirectory.value / "browser-ide",
+          compilerIRZip,
+          runtimeIRZip,
+          rtJar,
+          scalaLibJar,
+          scalaJSLibJar,
+          jszipDist,
+          dottyVersion,
+          (ThisBuild / baseDirectory).value,
+          s.log,
+        )
+      },
+      // Configure to use the non-bootstrapped compiler
+      bootstrappedScalaInstanceSettings,
+      /* Add the sources of scalajs-ir.
+       * To guarantee that dotty can bootstrap without depending on a version
+       * of scalajs-ir built with a different Scala compiler, we add its
+       * sources instead of depending on the binaries.
+       */
+      ivyConfigurations += SourceDeps.hide,
+      transitiveClassifiers := Seq("sources"),
+      libraryDependencies +=
+        ("org.scala-js" %%% "scalajs-ir" % scalaJSVersion % "sourcedeps").cross(CrossVersion.for3Use2_13),
+      Compile / sourceGenerators += Def.task {
+        val s = streams.value
+        val cacheDir = s.cacheDirectory
+        val trgDir = (Compile / sourceManaged).value / "scalajs-ir-src"
+
+        val report = updateClassifiers.value
+        val scalaJSIRSourcesJar = report.select(
+            configuration = configurationFilter("sourcedeps"),
+            module = (_: ModuleID).name.startsWith("scalajs-ir_"),
+            artifact = artifactFilter(`type` = "src")).headOption.getOrElse {
+          sys.error(s"Could not fetch scalajs-ir sources")
+        }
+
+        FileFunction.cached(cacheDir / s"fetchScalaJSIRSource",
+            FilesInfo.lastModified, FilesInfo.exists) { dependencies =>
+          s.log.info(s"Unpacking scalajs-ir sources to $trgDir...")
+          if (trgDir.exists)
+            IO.delete(trgDir)
+          IO.createDirectory(trgDir)
+          IO.unzip(scalaJSIRSourcesJar, trgDir)
+
+          val sjsSources = (trgDir ** "*.scala").get.toSet
+          sjsSources.foreach(f => {
+            val lines = IO.readLines(f)
+            val linesWithPackage = replacePackage(lines) {
+              case "org.scalajs.ir" => "dotty.tools.sjs.ir"
+            }
+            IO.writeLines(f, insertUnsafeNullsImport(linesWithPackage))
+          })
+          sjsSources
+        } (Set(scalaJSIRSourcesJar)).toSeq
+      }.taskValue,
+      bspEnabled := enableBspAllProjects,
     )
 
   // ==============================================================================================
@@ -2219,9 +2639,7 @@ object Build {
   /** Scala.js test suite.
    *
    *  This project downloads the sources of the upstream Scala.js test suite,
-   *  and tests them with the dotty Scala.js back-end. Currently, only a very
-   *  small fraction of the upstream test suite is actually compiled and run.
-   *  It will grow in the future, as more stuff is confirmed to be supported.
+   *  and tests the supported JUnit sources with the dotty Scala.js back-end.
    */
   lazy val sjsJUnitTests = project.in(file("tests/sjs-junit")).
     enablePlugins(DottyJSPlugin).
@@ -2250,7 +2668,7 @@ object Build {
           new CloneCommand()
             .setDirectory(trgDir)
             .setURI("https://github.com/scala-js/scala-js.git")
-            .setNoCheckout(true)
+            .setBranch(s"v$ver")
             .call()
         }
 
