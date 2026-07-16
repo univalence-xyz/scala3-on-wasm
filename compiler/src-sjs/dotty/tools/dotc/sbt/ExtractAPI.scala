@@ -10,7 +10,7 @@ class ExtractAPI extends Phase {
   override def phaseName: String = ExtractAPI.name
   override def description: String = ExtractAPI.description
 
-  override protected def run(using Context): Unit = ()
+  override def run(using Context): Unit = ()
 }
 
 object ExtractAPI {
