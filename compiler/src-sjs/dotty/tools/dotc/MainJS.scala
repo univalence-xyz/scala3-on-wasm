@@ -311,7 +311,12 @@ object MainJS extends JSDriver:
   private final class BrowserCompilerSession(setupArgs: Array[String]):
     private val rootCtx =
       val ctx = initCtx.fresh
-      ctx.base.retainPlatformBetweenRuns = true
+      // NB: do NOT set retainPlatformBetweenRuns here on 3.8.1. Its SJSPlatform
+      // binds JSDefinitions' Context at construction and has no init() to re-bind
+      // it per run (added upstream in 3.8.3). Retaining the platform would leave
+      // the Scala.js back-end running under a stale setup-time Context, so every
+      // compile that reaches code generation fails. Leaving it at the default
+      // (false) rebuilds the platform per round with that round's Context.
       ctx.setReporter(new reporting.StoreReporter(null))
 
     /** Diagnostics reported while distilling/checking the compiler flags. They are replayed
