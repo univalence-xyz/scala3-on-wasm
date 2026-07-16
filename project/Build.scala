@@ -1914,6 +1914,14 @@ object Build {
       crossPaths    := false, // org.scala-lang:scala3-compiler has a crosspath
       // sbt shouldn't add stdlib automatically, we depend on `scala3-library-nonbootstrapped`
       autoScalaLibrary := false,
+      // Drop `-Werror` for the JS compiler, mirroring the JVM compiler projects
+      // (`scala3-compiler-nonbootstrapped` / `scala3-compiler-bootstrapped-new`),
+      // which replace scalacOptions to omit it. 3.8.1 still keeps the global
+      // `-Werror` (upstream only disabled it in 3.8.3), but the compiler sources
+      // carry deprecation warnings that must not fail the build -- e.g. the
+      // deprecated `java.net.URL(String)` constructor in src-sjs AbstractFile and
+      // `scala.collection.mutable.AnyRefMap` in the generated scalajs-ir sources.
+      scalacOptions --= Seq("-Werror"),
       // The current JS-side archive handling uses JSPI/await, so the compiler
       // itself still runs through the Scala.js Wasm backend under Node.
       scalaJSLinkerConfig ~= {
