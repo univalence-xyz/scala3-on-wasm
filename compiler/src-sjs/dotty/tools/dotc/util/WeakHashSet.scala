@@ -117,7 +117,7 @@ abstract class WeakHashSet[A <: AnyRef](initialCapacity: Int = 8, loadFactor: Do
         case null => null
         case _ =>
           val entryElem = entry.get
-          if entryElem != null && isEqual(elem, entryElem) then entryElem
+          if entryElem != null && isEqual(elem, entryElem.uncheckedNN) then entryElem
           else linkedListLoop(entry.tail)
 
       linkedListLoop(table(bucket))
@@ -143,7 +143,7 @@ abstract class WeakHashSet[A <: AnyRef](initialCapacity: Int = 8, loadFactor: Do
         case null => addEntryAt(bucket, elem, h, oldHead)
         case _ =>
           val entryElem = entry.get
-          if entryElem != null && isEqual(elem, entryElem) then entryElem.uncheckedNN
+          if entryElem != null && isEqual(elem, entryElem.uncheckedNN) then entryElem.uncheckedNN
           else linkedListLoop(entry.tail)
 
       linkedListLoop(oldHead)
@@ -161,7 +161,7 @@ abstract class WeakHashSet[A <: AnyRef](initialCapacity: Int = 8, loadFactor: Do
       def linkedListLoop(prevEntry: Entry[A] | Null, entry: Entry[A] | Null): Unit =
         if entry != null then
           val entryElem = entry.get
-          if entryElem != null && isEqual(elem, entryElem) then remove(bucket, prevEntry, entry)
+          if entryElem != null && isEqual(elem, entryElem.uncheckedNN) then remove(bucket, prevEntry, entry)
           else linkedListLoop(entry, entry.tail)
 
       linkedListLoop(null, table(bucket))
