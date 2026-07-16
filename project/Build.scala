@@ -2625,7 +2625,7 @@ object Build {
           new CloneCommand()
             .setDirectory(trgDir)
             .setURI("https://github.com/scala-js/scala-js.git")
-            .setNoCheckout(true)
+            .setBranch(s"v$ver")
             .call()
         }
 
