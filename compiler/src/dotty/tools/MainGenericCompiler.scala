@@ -11,7 +11,6 @@ import dotty.tools.dotc.config.Properties.envOrNone
 import dotty.tools.io.Jar
 import java.nio.file.Paths
 import dotty.tools.dotc.config.CommandLineParser
-import dotty.tools.scripting.StringDriver
 
 enum CompileMode:
   case Guess
