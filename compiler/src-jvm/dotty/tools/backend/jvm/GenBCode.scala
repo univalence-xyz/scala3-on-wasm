@@ -8,7 +8,6 @@ import dotty.tools.dotc.interfaces.CompilerCallback
 import Contexts.*
 import Symbols.*
 import dotty.tools.io.*
-import scala.collection.mutable
 import scala.compiletime.uninitialized
 import java.util.concurrent.TimeoutException
 
@@ -29,9 +28,6 @@ class GenBCode extends Phase { self =>
     if (!old.contains(calls))
       superCallsMap.update(sym, old :+ calls)
   }
-
-  private val entryPoints = new mutable.HashSet[String]()
-  def registerEntryPoint(s: String): Unit = entryPoints += s
 
   private var _backendInterface: DottyBackendInterface = uninitialized
   def backendInterface(using ctx: Context): DottyBackendInterface = {
@@ -63,7 +59,7 @@ class GenBCode extends Phase { self =>
   private var _frontendAccess: PostProcessorFrontendAccess | Null = uninitialized
   def frontendAccess(using Context): PostProcessorFrontendAccess = {
     if _frontendAccess eq null then
-      _frontendAccess = PostProcessorFrontendAccess.Impl(backendInterface, entryPoints)
+      _frontendAccess = PostProcessorFrontendAccess.Impl(backendInterface, ctx.run.nn.entryPoints)
     _frontendAccess.nn
   }
 

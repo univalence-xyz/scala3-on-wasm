@@ -3,10 +3,13 @@ val `scala3-nonbootstrapped` = Build.`scala3-nonbootstrapped`
 val `scala3-bootstrapped-new` = Build.`scala3-bootstrapped-new`
 
 val `scala3-interfaces` = Build.`scala3-interfaces`
+val `scala3-interfaces-sjs` = Build.`scala3-interfaces-sjs`
 
 // Compiler projects
 val `scala3-compiler-nonbootstrapped` = Build.`scala3-compiler-nonbootstrapped`
 val `scala3-compiler-bootstrapped-new` = Build.`scala3-compiler-bootstrapped-new`
+val `scala3-compiler-sjs` = Build.`scala3-compiler-sjs`
+val sjsCompilerBrowserIDEExampleMacros = Build.sjsCompilerBrowserIDEExampleMacros
 
 val `scala3-repl` = Build.`scala3-repl`
 

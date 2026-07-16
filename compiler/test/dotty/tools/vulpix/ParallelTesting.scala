@@ -348,6 +348,23 @@ trait ParallelTesting extends RunnerOrchestration:
     }
   }
 
+  protected final case class ScalaCompilerFailure(
+      errorsText: String,
+      compilerVersion: String,
+      checkOutput: Option[List[String]] = None,
+  )
+
+  protected def processScalaSources(
+      args: Array[String],
+      sourcePaths: Array[String],
+      targetDir: JFile,
+      reporter: TestReporter,
+      driver: Driver
+  ): Option[ScalaCompilerFailure] = {
+    driver.process(args ++ sourcePaths, reporter = reporter)
+    None
+  }
+
   /** Each `Test` takes the `testSources` and performs the compilation and assertions
    *  according to the implementing class "neg", "run" or "pos".
    */
@@ -429,6 +446,7 @@ trait ParallelTesting extends RunnerOrchestration:
     private var _skipCount = 0
     protected final def registerSkip(): Unit = synchronized { _skipCount += 1 }
     def skipCount: Int = _skipCount
+    private val compilerOutputOverrides = mutable.HashMap.empty[TestReporter, List[String]]
 
     protected def logBuildInstructions(testSource: TestSource, reporters: Seq[TestReporter]) = {
       val (errCount, warnCount) = countErrorsAndWarnings(reporters)
@@ -563,7 +581,31 @@ trait ParallelTesting extends RunnerOrchestration:
               .toSet
             dottyFiles.filterNot(excludedFiles)
 
-        driver.process(allArgs ++ dottyFiles0, reporter = reporter)
+        processScalaSources(allArgs, dottyFiles0, targetDir, reporter, driver) match
+          case Some(ScalaCompilerFailure(errorsText, compilerVersion, checkOutput)) =>
+            checkOutput.foreach { lines =>
+              compilerOutputOverrides.synchronized {
+                compilerOutputOverrides(reporter) = lines
+              }
+            }
+            val diagnostics = parseErrors(errorsText, compilerVersion, TestConfiguration.pageWidth - 20)
+            val reportedDiagnostics =
+              if diagnostics.nonEmpty then diagnostics
+              else Diagnostic.Error(
+                s"Compilation with $compilerVersion failed.\nFull error output:\n$errorsText",
+                NoSourcePosition,
+              ) :: Nil
+            reportedDiagnostics.foreach { diag =>
+              val baseCtx = (new ContextBase).initialCtx
+              // Disable syntax highlighting: re-rendering the reconstructed diagnostic
+              // in this bare context would otherwise run the parser (via
+              // SyntaxHighlighting.highlight in MessageRendering.sourceLines), which
+              // needs an initialized Definitions and crashes on source such as
+              // `A with B` types.
+              val context = baseCtx.fresh.setSetting(baseCtx.settings.color, "never")
+              reporter.report(diag)(using context)
+            }
+          case None => ()
 
         // todo a better mechanism than ONLY. test: -scala-only?
         val javaFiles = files.filter(_.getName.endsWith(".java")).filterNot(_.getName.contains("SCALA_ONLY")).map(_.getPath)
@@ -607,7 +649,10 @@ trait ParallelTesting extends RunnerOrchestration:
             val columnNum = column.toInt
             val abstractFile = AbstractFile.getFile(filePath)
             val sourceFile = SourceFile(abstractFile, Codec.UTF8)
-            val offset = sourceFile.lineToOffset(lineNum - 1) + columnNum - 1
+            // Dotty renders columns 0-based (see MessageRendering.posFileStr), so a
+            // column-0 error must not subtract 1: doing so would move the offset onto
+            // the previous line and report the error on the wrong row.
+            val offset = sourceFile.lineToOffset(lineNum - 1) + math.max(0, columnNum - 1)
             val span = Spans.Span(offset)
             val sourcePos = SourcePosition(sourceFile, span)
             addToLast(barLine(start = false))
@@ -730,7 +775,11 @@ trait ParallelTesting extends RunnerOrchestration:
       testSource.checkFile.foreach(diffTest(testSource, _, reporterOutputLines(reporters), reporters, logger))
 
     private def reporterOutputLines(reporters: Seq[TestReporter]): List[String] =
-      reporters.flatMap(_.consoleOutput.linesIterator).toList
+      reporters.flatMap { reporter =>
+        compilerOutputOverrides.synchronized {
+          compilerOutputOverrides.get(reporter)
+        }.getOrElse(reporter.consoleOutput.linesIterator.toList)
+      }.toList
 
     private[ParallelTesting] def executeTestSuite(): this.type = {
       assert(testSourcesCompleted == 0, "not allowed to re-use a `CompileRun`")
@@ -1400,19 +1449,30 @@ trait ParallelTesting extends RunnerOrchestration:
       tests.reduce(aggregate)
   end CompilationTest
 
+  private def recreateOutputDir(targetDir: JFile): JFile = {
+    if (targetDir.exists()) {
+      Using.resource(Files.walk(targetDir.toPath)) { paths =>
+        paths.iterator().asScala.toList
+          .sortBy(_.getNameCount)
+          .reverse
+          .foreach(Files.deleteIfExists)
+      }
+    }
+    targetDir.mkdirs()
+    targetDir
+  }
+
   /** Create out directory for directory `d` */
   def createOutputDirsForDir(d: JFile, sourceDir: JFile, outDir: String): JFile = {
     val targetDir = new JFile(outDir + s"${sourceDir.getName}/${d.getName}")
-    targetDir.mkdirs()
-    targetDir
+    recreateOutputDir(targetDir)
   }
 
   /** Create out directory for `file` */
   private def createOutputDirsForFile(file: JFile, sourceDir: JFile, outDir: String): JFile = {
     val uniqueSubdir = file.getName.substring(0, file.getName.lastIndexOf('.'))
     val targetDir = new JFile(outDir + s"${sourceDir.getName}${JFile.separatorChar}$uniqueSubdir")
-    targetDir.mkdirs()
-    targetDir
+    recreateOutputDir(targetDir)
   }
 
   /** Make sure that directory string is as expected */
