@@ -1929,7 +1929,7 @@ object Build {
       ),
       // Add the source directories for the compiler (boostrapped)
       Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
-      Compile / unmanagedSourceDirectories += (`tasty-core-bootstrapped` / baseDirectory).value / "src",
+      Compile / unmanagedSourceDirectories += (`tasty-core-bootstrapped-new` / baseDirectory).value / "src",
       Compile / unmanagedSourceDirectories += baseDirectory.value / "src-sjs",
       Compile / unmanagedResourceDirectories += baseDirectory.value / "resources",
       // Specify the default entry point of the compiler
