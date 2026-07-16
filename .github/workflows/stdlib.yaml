@@ -592,8 +592,15 @@ jobs:
         with:
           node-version: '24.x'
       - uses: sbt/setup-sbt@v1
-      - name: Scala.js compiler tests
-        run: ./project/scripts/sbt "sjsCompilerTests/test"
+      - name: Install scala3-compiler-sjs Node dependencies
+        working-directory: compiler
+        run: npm ci
+      - name: scala3-compiler-sjs compilation test
+        run: ./project/scripts/sbt "scala3-compiler-sjs/Compile/sjsCompilerCompilationTest"
+      - name: scala3-compiler-sjs validation test
+        run: ./project/scripts/sbt "scala3-compiler-sjs/Compile/sjsCompilerValidationTest"
+      - name: scala3-compiler-sjs unit test
+        run: ./project/scripts/sbt "scala3-compiler-sjs/Compile/sjsCompilerUnitTest"
       - name: Scala.js sandbox
         run: ./project/scripts/sbt ";sjsSandbox/run ;sjsSandbox/test"
       - name: Scala.js JUnit tests

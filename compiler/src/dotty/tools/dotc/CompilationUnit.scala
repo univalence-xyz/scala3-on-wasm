@@ -15,6 +15,7 @@ import typer.Nullables
 import core.Decorators.*
 import config.{SourceVersion, Feature}
 import StdNames.nme
+import util.PlatformDependent.platformDependent
 import scala.annotation.internal.sharable
 import scala.util.control.NoStackTrace
 import transform.MacroAnnotations.isMacroAnnotation
@@ -182,7 +183,9 @@ object CompilationUnit {
         NoSource
       }
       else source
-    val info = if src.exists then CompilationUnitInfo(src.file) else null
+    val info =
+      if platformDependent(src.exists)(true) then CompilationUnitInfo(src.file)
+      else null
     new CompilationUnit(src, info)
   }
 

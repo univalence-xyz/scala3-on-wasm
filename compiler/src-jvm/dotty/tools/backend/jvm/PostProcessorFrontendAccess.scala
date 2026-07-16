@@ -100,7 +100,7 @@ object PostProcessorFrontendAccess {
   }
 
 
-  class Impl[I <: DottyBackendInterface](int: I, entryPoints: HashSet[String]) extends PostProcessorFrontendAccess(int) {
+  class Impl[I <: DottyBackendInterface](int: I, entryPoints: scala.collection.mutable.Set[String]) extends PostProcessorFrontendAccess(int) {
     override def compilerSettings: CompilerSettings = _compilerSettings.get
     private lazy val _compilerSettings: Lazy[CompilerSettings] = perRunLazy(buildCompilerSettings)
 
