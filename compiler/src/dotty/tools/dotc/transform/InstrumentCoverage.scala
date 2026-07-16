@@ -62,7 +62,7 @@ class InstrumentCoverage extends MacroTransform with IdentityDenotTransformer:
     coverageExcludeClasslikePatterns = ctx.settings.coverageExcludeClasslikes.value.map(_.r.pattern)
     coverageExcludeFilePatterns = ctx.settings.coverageExcludeFiles.value.map(_.r.pattern)
 
-    ctx.base.coverage.nn.removeStatementsFromFile(ctx.compilationUnit.source.file.absolute.jpath)
+    ctx.base.coverage.nn.removeStatementsFromFile(java.nio.file.Paths.get(ctx.compilationUnit.source.file.absolute.path))
     super.run
 
     Serializer.serialize(ctx.base.coverage.nn, outputPath, ctx.settings.sourceroot.value)
