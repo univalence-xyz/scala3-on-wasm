@@ -3,7 +3,6 @@ package config
 
 import dotty.tools.dotc.classpath.AggregateClassPath
 import dotty.tools.dotc.core.Contexts.*
-import dotty.tools.dotc.interactive.LogicalPackage
 import dotty.tools.io.ClassPath
 import dotty.tools.io.Path
 
@@ -50,9 +49,7 @@ object PathResolver:
 
   def main(args: Array[String]): Unit = ()
 
-// precomputedSourcePackages is accepted for signature parity with the JVM
-// PathResolver; the JS classpath factory has no source-package precomputation.
-class PathResolver(precomputedSourcePackages: Option[LogicalPackage] = None)(using c: Context):
+class PathResolver(using c: Context):
   import PathResolver.Defaults
   import c.base.settings
 
